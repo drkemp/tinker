@@ -25,150 +25,240 @@
 
 /* Includes ------------------------------------------------------------------*/  
 #include "application.h"
+#include "spark_disable_wlan.h"
+#include "spark_disable_cloud.h"
+#include "http.h"
 
-/* Function prototypes -------------------------------------------------------*/
-int tinkerDigitalRead(String pin);
-int tinkerDigitalWrite(String command);
-int tinkerAnalogRead(String pin);
-int tinkerAnalogWrite(String command);
+/* 
+ remote control 
+ 
+ 3 inputs from accelerometer (a5,a6,a7)
+ 5 outputs drive the scan rows (a0-a4)
+ TX output drives the LED
+ rx  not used
+ 8 inputs from the keys (d0-d7)
+ 
+ drive all key inputs as pullups
+ drive all keyscan outputs low for active
+ 
+*/
 
-/* This function is called once at start up ----------------------------------*/
-void setup()
-{
-	//Setup the Tinker application here
+// used for key debounce
+unsigned int lastkey=0;
+int keyhold=0;
 
-	//Register all the Tinker functions
-	Spark.function("digitalread", tinkerDigitalRead);
-	Spark.function("digitalwrite", tinkerDigitalWrite);
+int inputPins[] = {D0,D1,D2,D3,D4,D5,D6,D7};
+byte server[] = { 192, 168, 1, 110 }; // me
+int MAXLOGS=20;
+String pilelog[20] ;
+int ptrlog=0;
+int lastlog=0;
 
-	Spark.function("analogread", tinkerAnalogRead);
-	Spark.function("analogwrite", tinkerAnalogWrite);
-
+int getpin(int pin, int value) {
+    if((1<<pin) & value) return LOW;
+    return HIGH;
 }
 
-/* This function loops forever --------------------------------------------*/
-void loop()
-{
-	//This will run in a loop
+void setOutputs(int value){
+  digitalWrite(A0,getpin(0,value));
+  digitalWrite(A1,getpin(1,value));
+  digitalWrite(A2,getpin(2,value));
+  digitalWrite(A3,getpin(3,value));
+  digitalWrite(A4,getpin(4,value));
 }
 
-/*******************************************************************************
- * Function Name  : tinkerDigitalRead
- * Description    : Reads the digital value of a given pin
- * Input          : Pin 
- * Output         : None.
- * Return         : Value of the pin (0 or 1) in INT type
-                    Returns a negative number on failure
- *******************************************************************************/
-int tinkerDigitalRead(String pin)
-{
-	//convert ascii to integer
-	int pinNumber = pin.charAt(1) - '0';
-	//Sanity check to see if the pin numbers are within limits
-	if (pinNumber< 0 || pinNumber >7) return -1;
-
-	if(pin.startsWith("D"))
-	{
-		pinMode(pinNumber, INPUT_PULLDOWN);
-		return digitalRead(pinNumber);
-	}
-	else if (pin.startsWith("A"))
-	{
-		pinMode(pinNumber+10, INPUT_PULLDOWN);
-		return digitalRead(pinNumber+10);
-	}
-	return -2;
+void setLED(int state) {
+    RGB.control(true);
+    if(state) {
+        RGB.color(120, 0, 0);
+    } else {
+        RGB.color(0, 0, 0);
+    }
 }
 
-/*******************************************************************************
- * Function Name  : tinkerDigitalWrite
- * Description    : Sets the specified pin HIGH or LOW
- * Input          : Pin and value
- * Output         : None.
- * Return         : 1 on success and a negative number on failure
- *******************************************************************************/
-int tinkerDigitalWrite(String command)
-{
-	bool value = 0;
-	//convert ascii to integer
-	int pinNumber = command.charAt(1) - '0';
-	//Sanity check to see if the pin numbers are within limits
-	if (pinNumber< 0 || pinNumber >7) return -1;
-
-	if(command.substring(3,7) == "HIGH") value = 1;
-	else if(command.substring(3,6) == "LOW") value = 0;
-	else return -2;
-
-	if(command.startsWith("D"))
-	{
-		pinMode(pinNumber, OUTPUT);
-		digitalWrite(pinNumber, value);
-		return 1;
-	}
-	else if(command.startsWith("A"))
-	{
-		pinMode(pinNumber+10, OUTPUT);
-		digitalWrite(pinNumber+10, value);
-		return 1;
-	}
-	else return -3;
+void setForSleep(){
+  setOutputs(0x1F);  // turn on all scan outputs
+  setLED(0);  // turn off LED
+//  SPARK_WLAN_SLEEP = 1;
 }
 
-/*******************************************************************************
- * Function Name  : tinkerAnalogRead
- * Description    : Reads the analog value of a pin
- * Input          : Pin 
- * Output         : None.
- * Return         : Returns the analog value in INT type (0 to 4095)
-                    Returns a negative number on failure
- *******************************************************************************/
-int tinkerAnalogRead(String pin)
-{
-	//convert ascii to integer
-	int pinNumber = pin.charAt(1) - '0';
-	//Sanity check to see if the pin numbers are within limits
-	if (pinNumber< 0 || pinNumber >7) return -1;
-
-	if(pin.startsWith("D"))
-	{
-		pinMode(pinNumber, INPUT);
-		return analogRead(pinNumber);
-	}
-	else if (pin.startsWith("A"))
-	{
-		pinMode(pinNumber+10, INPUT);
-		return analogRead(pinNumber+10);
-	}
-	return -2;
+void powerup(){
+//  SPARK_WLAN_SLEEP = 0;
 }
 
-/*******************************************************************************
- * Function Name  : tinkerAnalogWrite
- * Description    : Writes an analog value (PWM) to the specified pin
- * Input          : Pin and Value (0 to 255)
- * Output         : None.
- * Return         : 1 on success and a negative number on failure
- *******************************************************************************/
-int tinkerAnalogWrite(String command)
-{
-	//convert ascii to integer
-	int pinNumber = command.charAt(1) - '0';
-	//Sanity check to see if the pin numbers are within limits
-	if (pinNumber< 0 || pinNumber >7) return -1;
-
-	String value = command.substring(3);
-
-	if(command.startsWith("D"))
-	{
-		pinMode(pinNumber, OUTPUT);
-		analogWrite(pinNumber, value.toInt());
-		return 1;
-	}
-	else if(command.startsWith("A"))
-	{
-		pinMode(pinNumber+10, OUTPUT);
-		analogWrite(pinNumber+10, value.toInt());
-		return 1;
-	}
-	else return -2;
+void resetkey(){
+  keyhold=0;
+  lastkey=0;
 }
+
+void setup() {
+    // set up the input pins
+    pinMode(D0,INPUT_PULLUP);
+    pinMode(D1,INPUT_PULLUP);
+    pinMode(D2,INPUT_PULLUP);
+    pinMode(D3,INPUT_PULLUP);
+    pinMode(D4,INPUT_PULLUP);
+    pinMode(D5,INPUT_PULLUP);
+    pinMode(D6,INPUT_PULLUP);
+    pinMode(D7,INPUT_PULLUP);
+    
+    // set up the output pins
+    pinMode(A0, OUTPUT);
+    pinMode(A1, OUTPUT);
+    pinMode(A2, OUTPUT);
+    pinMode(A3, OUTPUT);
+    pinMode(A4, OUTPUT);
+    
+    // set up the accelerometer pins
+    pinMode(A5, INPUT);
+    pinMode(A6, INPUT);
+    pinMode(A7, INPUT);
+
+    Serial.begin(9600);
+
+    // tcp
+    resetkey();
+    setForSleep();
+}
+
+void Log(String msg){
+    static int lnum=0;
+    msg.concat(lnum++);
+    pilelog[ptrlog++]=msg;
+    ptrlog = ptrlog%20;
+}
+
+void spewlog(){
+    for(int i=0;i<20;i++){
+        Serial.println(pilelog[i]);
+    }
+    Serial.println("-----");
+}
+
+void sendkey(unsigned int k){
+  Serial.print("K");
+  Serial.print(k & 0xFF,HEX);
+  Serial.print(",");
+  Serial.print((k >> 8)& 0x07,HEX);
+  Serial.println("");
+  String s = "GET /key?b=";
+  s.concat(k);
+  httpsend(server, s);
+}
+
+int mapkey(unsigned int col, unsigned int row){
+  // col can be 8 bits
+  // row is 0-4 - call it 3 bits
+  // I want to keep 0 as an error return, so add 1 to row
+
+  unsigned int mapped =  col | (row+1)<<8;
+  return mapped;
+}
+
+unsigned int readScanLine() {
+  unsigned int c =0;
+  for(int i=0;i<8;i++) {
+    if( digitalRead(inputPins[i]) == LOW) {
+      c |= (1<<i);
+    };
+  }
+  return c;
+}
+
+unsigned int scanForKey(){
+  // turn off all scan outputs, on LED
+  setOutputs(0); // turn off key lines
+  setLED(1);
+
+  unsigned int k=0;
+  for(unsigned int j=0;j<5;j++){
+     setOutputs(1<<j);
+     delay(10);
+     unsigned int c= readScanLine();
+     if(c){
+       k=mapkey(c,j);
+       break;
+     }
+  }
+  setOutputs(0x1F);  // turn on key lines
+  return k;
+}
+
+void processConsole(){
+    int ib = Serial.read();
+    Serial.println(ib, DEC);
+    if(ib == 'l') {
+      spewlog();
+    } else if(ib=='k') {
+        httpsend(server,"GET /key?b=33");
+    }
+}
+void processhost(){
+    String s=readhost();
+    Log(s);
+}
+
+int readanalog(){
+    static int accmax=50;
+    static int lastx=0;
+    static int lasty=0;
+    static int lastz=0;
+    int gotmotion=0;
+    int x=analogRead(A5);
+    int y=analogRead(A6);
+    int z=analogRead(A7);
+    int diffx=abs(x-lastx);
+    int diffy=abs(y-lasty);
+    int diffz=abs(z-lastz);
+    if(diffx>accmax || diffy>accmax || diffz>accmax){
+        String s = "GET /accel?x=";
+        s.concat(x);
+        s.concat("&y=");
+        s.concat(y);
+        s.concat("&z=");
+        s.concat(z);
+        httpsend(server,s);
+
+        lastx=(lastx+x)/2;
+        lasty=(lasty+y)/2;
+        lastz=(lastz+z)/2;
+        gotmotion=1;
+    }
+    return gotmotion;
+}
+void loop() {
+  if(readanalog()){
+    powerup();
+  }
+
+  if(readScanLine()){
+    powerup();
+    // some button is down
+    unsigned int k=scanForKey();
+    if(k){
+      if(k != lastkey){
+        sendkey(k);
+        lastkey=k;
+        keyhold=1;
+      } else {
+        keyhold+=1;
+      }
+    } else {
+      resetkey();
+    }
+  } else {
+    resetkey();
+  }
+  if(!keyhold) {
+    setForSleep();
+  }
+  if( Serial.available() > 0){
+      processConsole();
+  }
+  if(host_hasdata()){
+      processhost();
+  }
+  delay(500);
+}
+
+
