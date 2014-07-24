@@ -3,23 +3,34 @@
 
 bool hostalive=false;
 TCPClient client;
-byte hostserver[] = {0,0,0,0};
+String hosturl="";
 
-bool hostconnect(byte host[]){
-    hostserver[0]=host[0];
-    hostserver[1]=host[1];
-    hostserver[2]=host[2];
-    hostserver[3]=host[3];
-    if(client.connect(hostserver,8080)) {
-//        Log("Client connected");
-//        Log(String(Network.localIP()[3]));
+void Log(String s); 
+
+void sethosturl(String url) {
+    hosturl=url;
+    Log("Set host to "+url);
+}
+
+bool hostconnect() {
+   return hostconnect(hosturl);
+}
+
+bool hostconnect(String url){
+    char hostbuffer[512];
+    hosturl=url;
+    hosturl.toCharArray(hostbuffer,512);
+    if(client.connect(hostbuffer,80)) {
+        Log("Client connected");
+        Log(String(Network.localIP()[3]));
         hostalive=false;
     } else {
-//        Log("Client connect failed");
+        Log("Client url connect failed");
         hostalive=false;
     }
     return hostalive;
 }
+
 bool host_hasdata(){
     return (client.available()>0);
 }
@@ -40,33 +51,32 @@ void sendh( String s) {
         s.getBytes(buf,99);
         buf[len+1]=0;
         client.write(buf,len);
-//        Log(s);
+        Log(s);
 }
 
-bool httpsend(byte host[],String s){
+String getHosturl() {
+    String s="HOST: ";
+    s.concat(hosturl);
+    s.concat("\r\n");
+    return s;
+}
+
+bool httpsend(String s){
     if(!client.connected()){
-        hostconnect(host);
+        hostconnect();
     }
     if(client.connected()){
         s.concat(" HTTP/1.1");
         s.concat("\r\n");
         sendh(s);
-        s = "HOST: ";
-        s.concat(hostserver[0]);
-        s.concat('.');
-        s.concat(hostserver[1]);
-        s.concat('.');
-        s.concat(hostserver[2]);
-        s.concat('.');
-        s.concat(hostserver[3]);
-        s.concat("\r\n");
+        s = getHosturl();
         sendh(s);
         s="Accept: text/html, text/plain\r\n";
         sendh(s);
         s="\r\n";
         sendh(s);
     } else {
-//        Log("Host not connecting");
+        Log("Host not connecting");
         client.stop();
         hostalive=false;
     }

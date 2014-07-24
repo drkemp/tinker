@@ -1,6 +1,8 @@
 #include "application.h"
 
-bool httpsend(byte host[], String s);
+bool httpsend(String s);
 String readhost();
 bool host_hasdata();
-bool hostconnect(byte hostserver[]);
+bool hostconnect(String hosturl);
+void sethosturl(String url);
+

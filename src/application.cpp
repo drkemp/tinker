@@ -48,7 +48,7 @@ unsigned int lastkey=0;
 int keyhold=0;
 
 int inputPins[] = {D0,D1,D2,D3,D4,D5,D6,D7};
-byte server[] = { 192, 168, 1, 110 }; // me
+String serverurl="secure-potion-546.appspot.com";
 int MAXLOGS=20;
 String pilelog[20] ;
 int ptrlog=0;
@@ -117,6 +117,7 @@ void setup() {
     Serial.begin(9600);
 
     // tcp
+    sethosturl(serverurl);
     resetkey();
     setForSleep();
 }
@@ -126,6 +127,7 @@ void Log(String msg){
     msg.concat(lnum++);
     pilelog[ptrlog++]=msg;
     ptrlog = ptrlog%20;
+    Serial.println(msg);
 }
 
 void spewlog(){
@@ -143,7 +145,7 @@ void sendkey(unsigned int k){
   Serial.println("");
   String s = "GET /key?b=";
   s.concat(k);
-  httpsend(server, s);
+  httpsend( s);
 }
 
 int mapkey(unsigned int col, unsigned int row){
@@ -190,7 +192,7 @@ void processConsole(){
     if(ib == 'l') {
       spewlog();
     } else if(ib=='k') {
-        httpsend(server,"GET /key?b=33");
+        httpsend("GET /key?b=33");
     }
 }
 void processhost(){
@@ -217,7 +219,7 @@ int readanalog(){
         s.concat(y);
         s.concat("&z=");
         s.concat(z);
-        httpsend(server,s);
+        httpsend(s);
 
         lastx=(lastx+x)/2;
         lasty=(lasty+y)/2;
