@@ -25,7 +25,7 @@
 
 /* Includes ------------------------------------------------------------------*/  
 #include "application.h"
-#include "spark_disable_wlan.h"
+//#include "spark_disable_wlan.h"
 #include "spark_disable_cloud.h"
 #include "http.h"
 
@@ -122,12 +122,31 @@ void setup() {
     setForSleep();
 }
 
-void Log(String msg){
+void Log(String msg, bool send, bool cache){
     static int lnum=0;
-    msg.concat(lnum++);
-    pilelog[ptrlog++]=msg;
-    ptrlog = ptrlog%20;
-    Serial.println(msg);
+    if(cache) {
+       msg.concat(lnum++);
+       pilelog[ptrlog++]=msg;
+       ptrlog = ptrlog%20;
+    }
+    if(send) Serial.println(msg);
+}
+
+void Log(String msg){
+   Log(msg,true,true);
+}
+
+void wifistate() {
+   String sleep="NO";
+   String dhcp="NO";
+   if (SPARK_WLAN_SLEEP) { sleep="YES";}
+   if(WLAN_DHCP) {dhcp="YES";}
+   String b="Sleep: ";
+   b.concat(sleep);
+   Log(b,true,false);
+   b="DHCP: ";
+   b.concat(dhcp);
+   Log(b,true,false);
 }
 
 void spewlog(){
@@ -135,6 +154,7 @@ void spewlog(){
         Serial.println(pilelog[i]);
     }
     Serial.println("-----");
+    wifistate();
 }
 
 void sendkey(unsigned int k){
@@ -197,7 +217,7 @@ void processConsole(){
 }
 void processhost(){
     String s=readhost();
-    Log(s);
+    Log(s, false,true);
 }
 
 int readanalog(){

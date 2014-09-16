@@ -51,7 +51,7 @@ void sendh( String s) {
         s.getBytes(buf,99);
         buf[len+1]=0;
         client.write(buf,len);
-        Log(s);
+//        Log(s);
 }
 
 String getHosturl() {
